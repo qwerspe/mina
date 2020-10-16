@@ -32,5 +32,5 @@ module For_tests : sig
        account:Account.t
     -> txn_amount:Amount.t
     -> txn_global_slot:Global_slot.t
-    -> Account.Timing.t Or_error.t
+    -> ([> `Min_balance of Balance.t] * Account.Timing.t) Or_error.t
 end
