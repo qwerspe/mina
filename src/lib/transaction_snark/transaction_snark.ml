@@ -5750,9 +5750,11 @@ let%test_module "account timing check" =
         @@ Account.create_timed account_id balance ~initial_minimum_balance
              ~cliff_time ~vesting_period ~vesting_increment
       in
-      let timing = validate_timing ~txn_amount ~txn_global_slot ~account in
-      match timing with
-      | Ok (Timed _ as unchecked_timing) ->
+      let timing_with_min_balance =
+        validate_timing_with_min_balance ~txn_amount ~txn_global_slot ~account
+      in
+      match timing_with_min_balance with
+      | Ok ((Timed _ as unchecked_timing), `Min_balance _) ->
           run_checked_timing_and_compare account txn_amount txn_global_slot
             unchecked_timing
       | _ ->
@@ -5773,8 +5775,8 @@ let%test_module "account timing check" =
       in
       let txn_amount = Currency.Amount.of_int 100_000_000_000 in
       let txn_global_slot = Coda_numbers.Global_slot.of_int 1_900 in
-      let timing =
-        validate_timing ~account
+      let timing_with_min_balance =
+        validate_timing_with_min_balance ~account
           ~txn_amount:(Currency.Amount.of_int 100_000_000_000)
           ~txn_global_slot:(Coda_numbers.Global_slot.of_int 1_900)
       in
@@ -5782,8 +5784,8 @@ let%test_module "account timing check" =
           subtract 90 * 100 = 9,000 from init min balance of 10,000 to get 1000
           so we should still be timed
         *)
-      match timing with
-      | Ok (Timed _ as unchecked_timing) ->
+      match timing_with_min_balance with
+      | Ok ((Timed _ as unchecked_timing), `Min_balance _) ->
           run_checked_timing_and_compare account txn_amount txn_global_slot
             unchecked_timing
       | _ ->
@@ -5804,13 +5806,15 @@ let%test_module "account timing check" =
       in
       let txn_amount = Currency.Amount.of_int 100_000_000_000 in
       let txn_global_slot = Global_slot.of_int 2_000 in
-      let timing = validate_timing ~txn_amount ~txn_global_slot ~account in
+      let timing_with_min_balance =
+        validate_timing_with_min_balance ~txn_amount ~txn_global_slot ~account
+      in
       (* we're 2_000 - 1_000 = 1_000 slots past the cliff, which is 100 vesting periods
           subtract 100 * 100_000_000_000 = 10_000_000_000_000 from init min balance
           of 10_000_000_000 to get zero, so we should be untimed now
         *)
-      match timing with
-      | Ok (Untimed as unchecked_timing) ->
+      match timing_with_min_balance with
+      | Ok ((Untimed as unchecked_timing), `Min_balance _) ->
           run_checked_timing_and_compare account txn_amount txn_global_slot
             unchecked_timing
       | _ ->
@@ -5882,9 +5886,11 @@ let%test_module "account timing check" =
       (* fully vested, curr min balance = 0, so we can spend the whole balance *)
       let txn_amount = Currency.Amount.of_int 100_000_000_000_000 in
       let txn_global_slot = Global_slot.of_int 3000 in
-      let timing = validate_timing ~txn_amount ~txn_global_slot ~account in
-      match timing with
-      | Ok (Untimed as unchecked_timing) ->
+      let timing_with_min_balance =
+        validate_timing_with_min_balance ~txn_amount ~txn_global_slot ~account
+      in
+      match timing_with_min_balance with
+      | Ok ((Untimed as unchecked_timing), `Min_balance _) ->
           run_checked_timing_and_compare account txn_amount txn_global_slot
             unchecked_timing
       | _ ->

@@ -298,11 +298,17 @@ module type S = sig
     -> bool Or_error.t
 
   module For_tests : sig
+    val validate_timing_with_min_balance :
+         account:Account.t
+      -> txn_amount:Amount.t
+      -> txn_global_slot:Global_slot.t
+      -> (Account.Timing.t * [> `Min_balance of Balance.t]) Or_error.t
+
     val validate_timing :
          account:Account.t
       -> txn_amount:Amount.t
       -> txn_global_slot:Global_slot.t
-      -> ([> `Min_balance of Balance.t] * Account.Timing.t) Or_error.t
+      -> Account.Timing.t Or_error.t
   end
 end
 
@@ -320,13 +326,13 @@ let timing_error_to_user_command_status err =
   | _ ->
       failwith "Unexpected timed account validation error"
 
-let validate_timing ~account ~txn_amount ~txn_global_slot =
+let validate_timing_with_min_balance ~account ~txn_amount ~txn_global_slot =
   let open Account.Poly in
   let open Account.Timing.Poly in
   match account.timing with
   | Untimed ->
       (* no time restrictions *)
-      Or_error.return (`Min_balance Balance.zero, Untimed)
+      Or_error.return (Untimed, `Min_balance Balance.zero)
   | Timed
       {initial_minimum_balance; cliff_time; vesting_period; vesting_increment}
     ->
@@ -369,8 +375,15 @@ let validate_timing ~account ~txn_amount ~txn_global_slot =
       in
       (* once the calculated minimum balance becomes zero, the account becomes untimed *)
       if Balance.(curr_min_balance > zero) then
-        (`Min_balance curr_min_balance, account.timing)
-      else (`Min_balance Balance.zero, Untimed)
+        (account.timing, `Min_balance curr_min_balance)
+      else (Untimed, `Min_balance Balance.zero)
+
+let validate_timing ~account ~txn_amount ~txn_global_slot =
+  let open Result.Let_syntax in
+  let%map timing, `Min_balance _ =
+    validate_timing_with_min_balance ~account ~txn_amount ~txn_global_slot
+  in
+  timing
 
 module Make (L : Ledger_intf) : S with type ledger := L.t = struct
   open L
@@ -529,7 +542,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
     let fee = Amount.of_fee fee in
     let%bind balance = sub_amount account.balance fee in
     let%bind () = validate_nonces nonce account.nonce in
-    let%map `Min_balance _, timing =
+    let%map timing =
       validate_timing ~txn_amount:fee ~txn_global_slot:current_global_slot
         ~account
     in
@@ -633,7 +646,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
              (Amount.of_fee constraint_constants.account_creation_fee))
       in
       let account = {account with balance} in
-      let `Min_balance _, timing =
+      let timing =
         Or_error.ok_exn
           (validate_timing ~txn_amount:Amount.zero
              ~txn_global_slot:current_global_slot ~account)
@@ -694,7 +707,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
           (* Timing is always valid, but we need to record any switch from
              timed to untimed here to stay in sync with the snark.
           *)
-          let%map `Min_balance _, timing =
+          let%map timing =
             validate_timing ~txn_amount:Amount.zero
               ~txn_global_slot:current_global_slot ~account:source_account
             |> Result.map_error ~f:timing_error_to_user_command_status
@@ -753,7 +766,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
                     Result.fail User_command_status.Failure.Source_not_present
               in
               let source_timing = account.timing in
-              let%bind `Min_balance _, timing =
+              let%bind timing =
                 validate_timing ~txn_amount:amount
                   ~txn_global_slot:current_global_slot ~account
                 |> Result.map_error ~f:timing_error_to_user_command_status
@@ -886,7 +899,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
           in
           let source_timing = source_account.timing in
           let%map source_account =
-            let%map `Min_balance _, timing =
+            let%map timing =
               validate_timing ~txn_amount:Amount.zero
                 ~txn_global_slot:current_global_slot ~account:source_account
               |> Result.map_error ~f:timing_error_to_user_command_status
@@ -948,7 +961,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
                   Result.fail User_command_status.Failure.Not_token_owner
             in
             let source_timing = account.timing in
-            let%map `Min_balance _, timing =
+            let%map timing =
               validate_timing ~txn_amount:Amount.zero
                 ~txn_global_slot:current_global_slot ~account
               |> Result.map_error ~f:timing_error_to_user_command_status
@@ -1046,7 +1059,6 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
       | Neg ->
           validate_timing ~txn_amount:delta.magnitude
             ~txn_global_slot:state_view.curr_global_slot ~account:a
-          |> Result.map ~f:(fun (_min_balance, timing) -> timing)
           |> Result.map_error ~f:timing_error_to_user_command_status
     in
     let init =
@@ -1136,7 +1148,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
               Receipt.Chain_hash.cons payload a.receipt_chain_hash }
         in
         let step_amount ~amount (a : Account.t) =
-          let%map `Min_balance _, timing = validate_timing a amount in
+          let%map timing = validate_timing a amount in
           {(step a) with timing}
         in
         let step_fee_payer a fee =
@@ -1383,7 +1395,7 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
 
   let update_timing_when_no_deduction ~txn_global_slot account =
     let open Result.Let_syntax in
-    let%map `Min_balance _, timing =
+    let%map timing =
       validate_timing ~txn_amount:Amount.zero ~txn_global_slot ~account
     in
     timing
@@ -1900,6 +1912,8 @@ module Make (L : Ledger_intf) : S with type ledger := L.t = struct
     (root, `Next_available_token next_available_token)
 
   module For_tests = struct
+    let validate_timing_with_min_balance = validate_timing_with_min_balance
+
     let validate_timing = validate_timing
   end
 end
