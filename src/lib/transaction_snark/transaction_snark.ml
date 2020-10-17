@@ -5709,7 +5709,7 @@ let%test_module "account timing check" =
       let txn_amount = Amount.var_of_t txn_amount in
       let txn_global_slot = Global_slot.Checked.constant txn_global_slot in
       let open Snarky_backendless.Checked.Let_syntax in
-      let%map _, timing =
+      let%map `Min_balance _min_balance, timing =
         Base.check_timing ~balance_check:Tick.Boolean.Assert.is_true
           ~timed_balance_check:Tick.Boolean.Assert.is_true ~account ~txn_amount
           ~txn_global_slot
@@ -5717,7 +5717,7 @@ let%test_module "account timing check" =
       Snarky_backendless.As_prover.read Account.Timing.typ timing
 
     let run_checked_timing_and_compare account txn_amount txn_global_slot
-        unchecked_timing =
+        unchecked_timing _unchecked_min_balance =
       let checked_computation =
         make_checked_computation account txn_amount txn_global_slot
       in
@@ -5754,9 +5754,10 @@ let%test_module "account timing check" =
         validate_timing_with_min_balance ~txn_amount ~txn_global_slot ~account
       in
       match timing_with_min_balance with
-      | Ok ((Timed _ as unchecked_timing), `Min_balance _) ->
+      | Ok ((Timed _ as unchecked_timing), `Min_balance unchecked_min_balance)
+        ->
           run_checked_timing_and_compare account txn_amount txn_global_slot
-            unchecked_timing
+            unchecked_timing unchecked_min_balance
       | _ ->
           false
 
@@ -5785,9 +5786,10 @@ let%test_module "account timing check" =
           so we should still be timed
         *)
       match timing_with_min_balance with
-      | Ok ((Timed _ as unchecked_timing), `Min_balance _) ->
+      | Ok ((Timed _ as unchecked_timing), `Min_balance unchecked_min_balance)
+        ->
           run_checked_timing_and_compare account txn_amount txn_global_slot
-            unchecked_timing
+            unchecked_timing unchecked_min_balance
       | _ ->
           false
 
@@ -5814,9 +5816,10 @@ let%test_module "account timing check" =
           of 10_000_000_000 to get zero, so we should be untimed now
         *)
       match timing_with_min_balance with
-      | Ok ((Untimed as unchecked_timing), `Min_balance _) ->
+      | Ok ((Untimed as unchecked_timing), `Min_balance unchecked_min_balance)
+        ->
           run_checked_timing_and_compare account txn_amount txn_global_slot
-            unchecked_timing
+            unchecked_timing unchecked_min_balance
       | _ ->
           false
 
@@ -5890,9 +5893,10 @@ let%test_module "account timing check" =
         validate_timing_with_min_balance ~txn_amount ~txn_global_slot ~account
       in
       match timing_with_min_balance with
-      | Ok ((Untimed as unchecked_timing), `Min_balance _) ->
+      | Ok ((Untimed as unchecked_timing), `Min_balance unchecked_min_balance)
+        ->
           run_checked_timing_and_compare account txn_amount txn_global_slot
-            unchecked_timing
+            unchecked_timing unchecked_min_balance
       | _ ->
           false
   end )
