@@ -5704,36 +5704,55 @@ let%test_module "account timing check" =
 
     (* test that unchecked and checked calculations for timing agree *)
 
-    let make_checked_computation account txn_amount txn_global_slot =
+    let checked_min_balance_and_timing account txn_amount txn_global_slot =
       let account = Account.var_of_t account in
       let txn_amount = Amount.var_of_t txn_amount in
       let txn_global_slot = Global_slot.Checked.constant txn_global_slot in
-      let open Snarky_backendless.Checked.Let_syntax in
-      let%map `Min_balance _min_balance, timing =
+      let%map `Min_balance min_balance, timing =
         Base.check_timing ~balance_check:Tick.Boolean.Assert.is_true
           ~timed_balance_check:Tick.Boolean.Assert.is_true ~account ~txn_amount
           ~txn_global_slot
       in
+      (min_balance, timing)
+
+    let make_checked_timing_computation account txn_amount txn_global_slot =
+      let open Snarky_backendless.Checked.Let_syntax in
+      let%map _min_balance, timing =
+        checked_min_balance_and_timing account txn_amount txn_global_slot
+      in
       Snarky_backendless.As_prover.read Account.Timing.typ timing
 
+    let make_checked_min_balance_computation account txn_amount txn_global_slot
+        =
+      let%map min_balance, _timing =
+        checked_min_balance_and_timing account txn_amount txn_global_slot
+      in
+      min_balance
+
     let run_checked_timing_and_compare account txn_amount txn_global_slot
-        unchecked_timing _unchecked_min_balance =
-      let checked_computation =
-        make_checked_computation account txn_amount txn_global_slot
+        unchecked_timing unchecked_min_balance =
+      let checked_timing_computation =
+        make_checked_timing_computation account txn_amount txn_global_slot
+      in
+      let checked_min_balance_computation =
+        make_checked_min_balance_computation account txn_amount txn_global_slot
       in
       let (), checked_timing =
         Or_error.ok_exn
-        @@ Snark_params.Tick.run_and_check checked_computation ()
+        @@ Snark_params.Tick.run_and_check checked_timing_computation ()
+      in
+      let (), checked_min_balance =
+        Snark_params.Tick.run_unchecked checked_min_balance_computation ()
       in
       Account.Timing.equal checked_timing unchecked_timing
 
     (* confirm the checked computation fails *)
     let checked_timing_should_fail account txn_amount txn_global_slot =
-      let checked_computation =
-        make_checked_computation account txn_amount txn_global_slot
+      let checked_timing_computation =
+        make_checked_timing_computation account txn_amount txn_global_slot
       in
       Or_error.is_error
-      @@ Snark_params.Tick.run_and_check checked_computation ()
+      @@ Snark_params.Tick.run_and_check checked_timing_computation ()
 
     let%test "before_cliff_time" =
       let pk = Public_key.Compressed.empty in
